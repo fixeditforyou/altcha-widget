@@ -9,7 +9,7 @@
 	let { loading, ...rest }: Props = $props();
 </script>
 
-<div class="altcha-checkbox-native" data-loading={loading}>
+<div class="altcha-checkbox-native" data-altcha-loading={loading}>
 	<input type="checkbox" {...rest} />
 	<div class="altcha-spinner altcha-checkbox-native-spinner"></div>
 </div>

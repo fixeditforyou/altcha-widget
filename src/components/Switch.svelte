@@ -15,7 +15,7 @@
 	}
 </script>
 
-<div class="altcha-switch" data-loading={loading}>
+<div class="altcha-switch" data-altcha-loading={loading}>
 	<input bind:this={inputEl} type="checkbox" {...rest} />
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
