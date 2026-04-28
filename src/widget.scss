@@ -478,13 +478,13 @@
 			width: var(--altcha-checkbox-size);
 		}
 
-		&[data-loading='true'] input {
+		&[data-altcha-loading='true'] input {
 			appearance: none;
 			opacity: 0;
 			pointer-events: none;
 		}
 
-		&[data-loading='true'] &-spinner {
+		&[data-altcha-loading='true'] &-spinner {
 			display: block;
 		}
 	}
@@ -509,13 +509,13 @@
 			width: var(--altcha-checkbox-size);
 		}
 
-		&[data-loading='true'] input {
+		&[data-altcha-loading='true'] input {
 			appearance: none;
 			opacity: 0;
 			pointer-events: none;
 		}
 
-		&[data-loading='true'] &-spinner {
+		&[data-altcha-loading='true'] &-spinner {
 			display: block;
 		}
 	}
@@ -568,15 +568,15 @@
 			width: var(--altcha-switch-toggle-size);
 		}
 
-		&[data-loading='true'] {
+		&[data-altcha-loading='true'] {
 			pointer-events: none;
 		}
 
-		&[data-loading='true'] &-spinner {
+		&[data-altcha-loading='true'] &-spinner {
 			display: block;
 		}
 
-		&[data-loading='true'] &-toggle {
+		&[data-altcha-loading='true'] &-toggle {
 			background-color: transparent;
 			left: calc(50% - (var(--altcha-switch-toggle-size) / 2));
 		}
