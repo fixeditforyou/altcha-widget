@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.0.11] - 2026-06-01
+
+- Fix: guard customElements.define against duplicate registration [#187]
+
+## [3.0.10] - 2026-05-23
+
+- Fix: injectCss - auto detect CSP nonce
+
+## [3.0.9] - 2026-05-12
+
+- Fix: challenge parameter - allow URLs without origin
+
+## [3.0.8] - 2026-05-06
+
+- Fix: request form submit with code-challenge when auto=onsubmit [#183]
+
 ## [3.0.7] - 2026-05-06
 
 - Fix: floating display mode - top placement arrow [#182]
