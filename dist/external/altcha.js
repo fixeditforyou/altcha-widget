@@ -5018,7 +5018,7 @@ function Checkbox($$anchor, $$props) {
   var svg = sibling(input, 2);
   next(2);
   reset(div);
-  template_effect(() => set_attribute(div, "data-altcha-loading", loading()));
+  template_effect(() => set_attribute(div, "data-loading", loading()));
   delegated("click", svg, onClick);
   append($$anchor, div);
   return pop($$exports);
@@ -5043,7 +5043,7 @@ function CheckboxNative($$anchor, $$props) {
   attribute_effect(input, () => ({ type: "checkbox", ...rest }), void 0, void 0, void 0, void 0, true);
   next(2);
   reset(div);
-  template_effect(() => set_attribute(div, "data-altcha-loading", loading()));
+  template_effect(() => set_attribute(div, "data-loading", loading()));
   append($$anchor, div);
   return pop($$exports);
 }
@@ -5136,7 +5136,7 @@ function Switch($$anchor, $$props) {
   bind_this(input, ($$value) => inputEl = $$value, () => inputEl);
   var div_1 = sibling(input, 2);
   reset(div);
-  template_effect(() => set_attribute(div, "data-altcha-loading", loading()));
+  template_effect(() => set_attribute(div, "data-loading", loading()));
   delegated("click", div_1, onClick);
   append($$anchor, div);
   return pop($$exports);
@@ -5363,7 +5363,7 @@ function Code($$anchor, $$props) {
         button.disabled = get(audioState) === AudioState.LOADING || get(audioState) === AudioState.ERROR;
         set_attribute(button, "aria-label", get(audioState) === AudioState.LOADING ? strings().loading : strings().getAudioChallenge);
       });
-      event("click", button, () => onPlayAudio(), true);
+      delegated("click", button, () => onPlayAudio());
       append($$anchor2, button);
     };
     if_block(node_1, ($$render) => {
@@ -5418,12 +5418,12 @@ function Code($$anchor, $$props) {
   event("submit", form, onSubmitCapture, true);
   delegated("keydown", input, onInputKeyDown);
   bind_value(input, () => get(code), ($$value) => set(code, $$value));
-  event("click", button_1, () => onReload()?.(), true);
-  event("click", button_3, () => onCancel()?.(), true);
+  delegated("click", button_1, () => onReload()?.());
+  delegated("click", button_3, () => onCancel()?.());
   append($$anchor, div);
   return pop($$exports);
 }
-delegate(["keydown"]);
+delegate(["keydown", "click"]);
 create_custom_element(
   Code,
   {
@@ -5446,7 +5446,7 @@ var root_3$1 = /* @__PURE__ */ from_html(`<div role="button" class="altcha-popov
 var root$1 = /* @__PURE__ */ from_html(`<!> <div><!> <!> <div class="altcha-popover-content"><!></div></div>`, 1);
 function Popover($$anchor, $$props) {
   push($$props, true);
-  let anchor = prop($$props, "anchor"), children = prop($$props, "children"), display = prop($$props, "display", 7, "standard"), backdrop = prop($$props, "backdrop", 7, false), onClickOutside = prop($$props, "onClickOutside"), onClickOutsideDelay = prop($$props, "onClickOutsideDelay", 7, 600), onClose = prop($$props, "onClose"), placement = prop($$props, "placement", 7, "auto"), updateUISignal = prop($$props, "updateUISignal"), variant = prop($$props, "variant", 7, "neutral"), rest = /* @__PURE__ */ rest_props($$props, [
+  let anchor = prop($$props, "anchor"), children = prop($$props, "children"), display = prop($$props, "display", 7, "standard"), backdrop = prop($$props, "backdrop", 7, false), onClickOutside = prop($$props, "onClickOutside"), onClickOutsideDelay = prop($$props, "onClickOutsideDelay", 7, 600), onClose = prop($$props, "onClose"), placement = prop($$props, "placement", 7, "auto"), variant = prop($$props, "variant", 7, "neutral"), rest = /* @__PURE__ */ rest_props($$props, [
     "$$slots",
     "$$events",
     "$$legacy",
@@ -5459,7 +5459,6 @@ function Popover($$anchor, $$props) {
     "onClickOutsideDelay",
     "onClose",
     "placement",
-    "updateUISignal",
     "variant"
   ]);
   let el = /* @__PURE__ */ state(void 0);
@@ -5469,11 +5468,6 @@ function Popover($$anchor, $$props) {
   user_effect(() => {
     if (placement() !== "auto") {
       set(top, placement() === "top");
-    }
-  });
-  user_effect(() => {
-    if (updateUISignal()) {
-      reposition();
     }
   });
   onMount(() => {
@@ -5498,7 +5492,7 @@ function Popover($$anchor, $$props) {
   }
   function onWindowClick(ev) {
     const target = ev.target;
-    if (!get(el)?.contains(target) && (!onClickOutsideDelay() || get(mountedAt) + onClickOutsideDelay() < Date.now())) {
+    if (!get(el)?.contains(target) && get(mountedAt) && get(mountedAt) + onClickOutsideDelay() < Date.now()) {
       onClickOutside()?.();
     }
   }
@@ -5575,13 +5569,6 @@ function Popover($$anchor, $$props) {
       placement($$value);
       flushSync();
     },
-    get updateUISignal() {
-      return updateUISignal();
-    },
-    set updateUISignal($$value) {
-      updateUISignal($$value);
-      flushSync();
-    },
     get variant() {
       return variant();
     },
@@ -5591,7 +5578,7 @@ function Popover($$anchor, $$props) {
     }
   };
   var fragment = root$1();
-  event("click", $window, onWindowClick, true);
+  event("click", $window, onWindowClick);
   event("resize", $window, onWindowResize);
   event("scroll", $window, onWindowScroll);
   var node = first_child(fragment);
@@ -5628,7 +5615,7 @@ function Popover($$anchor, $$props) {
   {
     var consequent_2 = ($$anchor2) => {
       var div_3 = root_3$1();
-      event("click", div_3, onCloseClick, true);
+      delegated("click", div_3, onCloseClick);
       append($$anchor2, div_3);
     };
     if_block(node_2, ($$render) => {
@@ -5644,6 +5631,7 @@ function Popover($$anchor, $$props) {
   append($$anchor, fragment);
   return pop($$exports);
 }
+delegate(["click"]);
 create_custom_element(
   Popover,
   {
@@ -5655,7 +5643,6 @@ create_custom_element(
     onClickOutsideDelay: {},
     onClose: {},
     placement: {},
-    updateUISignal: {},
     variant: {}
   },
   [],
@@ -5922,7 +5909,6 @@ function Widget($$anchor, $$props) {
   let checked = /* @__PURE__ */ state(false);
   let codeChallenge = /* @__PURE__ */ state(null);
   let currentController = /* @__PURE__ */ state(null);
-  let currentDisplay = /* @__PURE__ */ state(null);
   let currentState = /* @__PURE__ */ state(proxy(State.UNVERIFIED));
   let elAnchorArrow = /* @__PURE__ */ state(void 0);
   let elFloatingAnchor = /* @__PURE__ */ state(void 0);
@@ -5933,7 +5919,6 @@ function Widget($$anchor, $$props) {
   let expirationTimeout = /* @__PURE__ */ state(null);
   let payload = /* @__PURE__ */ state(null);
   let plugins = /* @__PURE__ */ state(proxy([]));
-  let updateUISignal = /* @__PURE__ */ state(0);
   let userConfig = /* @__PURE__ */ state(proxy({}));
   let visible = /* @__PURE__ */ state(true);
   const config = /* @__PURE__ */ user_derived(() => ({
@@ -6013,9 +5998,7 @@ function Widget($$anchor, $$props) {
     }
   });
   user_effect(() => {
-    if (get(currentDisplay) !== get(config).display) {
-      setDisplay(get(config).display);
-    }
+    setDisplay(get(config).display);
   });
   user_effect(() => {
     if (get(checked) && get(currentState) === State.VERIFYING) {
@@ -6066,7 +6049,7 @@ function Widget($$anchor, $$props) {
     }
   });
   onMount(() => {
-    log("mounted", "3.0.11");
+    log("mounted", "3.0.4");
     if (instance) {
       globalThis.$altcha.instances.add(instance);
     }
@@ -6165,14 +6148,7 @@ function Widget($$anchor, $$props) {
       return hook;
     }
     if (typeof source2 === "string") {
-      if (source2.startsWith("{")) {
-        log("parsing JSON challenge");
-        try {
-          challenge = JSON.parse(source2);
-        } catch {
-          throw new Error(`Unable to parse JSON challenge.`);
-        }
-      } else {
+      if (source2.match(/^(https?:)?\//)) {
         log("fetching challenge from", requestOptions?.method || "GET", source2);
         set(baseUrl, new URL(source2, location.origin), true);
         const resp = await get(config).fetch(source2, {
@@ -6200,6 +6176,13 @@ function Widget($$anchor, $$props) {
           log("HIS result", json.hisResult);
         }
         challenge = json;
+      } else {
+        log("parsing JSON challenge");
+        try {
+          challenge = JSON.parse(source2);
+        } catch {
+          throw new Error(`Unable to parse JSON challenge.`);
+        }
       }
     } else if (source2 && typeof source2 === "object") {
       try {
@@ -6317,6 +6300,9 @@ function Widget($$anchor, $$props) {
     }
   }
   function onCloseClick() {
+    if (get(currentController)) {
+      get(currentController).abort();
+    }
     setDisplay(get(config).display);
     reset$1();
   }
@@ -6335,18 +6321,17 @@ function Widget($$anchor, $$props) {
     }
   }
   function onFormReset() {
+    if (get(currentController)) {
+      get(currentController).abort();
+    }
     setDisplay(get(config).display);
     reset$1();
   }
   function onFormSubmit(ev) {
-    const target = ev.target;
-    if (target?.getAttribute("data-code-challenge") === "true") {
-      return;
-    }
+    set(elSubmitter, ev.submitter, true);
     if (get(auto) === "onsubmit" && get(currentState) === State.UNVERIFIED) {
       ev.preventDefault();
       ev.stopPropagation();
-      set(elSubmitter, ev.submitter, true);
       show();
       verify().then((result) => {
         if (result && !get(codeChallenge)) {
@@ -6357,11 +6342,8 @@ function Widget($$anchor, $$props) {
       });
     }
   }
-  function onWindowPageshow(ev) {
-    if (ev.persisted) {
-      setDisplay(get(config).display);
-      reset$1();
-    }
+  function onWindowPageshow() {
+    reset$1();
   }
   function onWindowResize() {
     updateUI();
@@ -6481,9 +6463,6 @@ function Widget($$anchor, $$props) {
       case "standard":
         show();
     }
-    if (get(currentDisplay) !== value) {
-      set(currentDisplay, value, true);
-    }
   }
   function setChallengeExpiration(expiresAt) {
     if (get(expirationTimeout)) {
@@ -6582,9 +6561,6 @@ function Widget($$anchor, $$props) {
     set(checked, false);
     set(error, err, true);
     set(payload, null);
-    if (get(currentController)) {
-      get(currentController).abort();
-    }
     if (get(expirationTimeout)) {
       clearTimeout(get(expirationTimeout));
       set(expirationTimeout, null);
@@ -6607,7 +6583,6 @@ function Widget($$anchor, $$props) {
       case "floating":
         return repositionFloating();
     }
-    set(updateUISignal, get(updateUISignal) + 1);
   }
   async function verify(options = {}) {
     const {
@@ -6623,8 +6598,8 @@ function Widget($$anchor, $$props) {
     if (hook !== void 0) {
       return hook;
     }
-    reset$1(State.VERIFYING);
     set(currentController, controller, true);
+    reset$1(State.VERIFYING);
     try {
       if (!isSecureContext) {
         throw new Error("Secure context (HTTPS) required.");
@@ -6635,10 +6610,6 @@ function Widget($$anchor, $$props) {
       if (get(config).test) {
         log("running test mode with null challenge");
         await delay(Math.max(0, minDuration - (performance.now() - start)));
-        if (get(currentController)?.signal.aborted) {
-          reset$1();
-          return null;
-        }
         set(payload, btoa(JSON.stringify({ challenge: null, solution: null, test: true })), true);
         log("verified");
         setState(State.VERIFIED);
@@ -6769,7 +6740,7 @@ function Widget($$anchor, $$props) {
           if (get(config).overlayContent) $$render(consequent_1);
         });
       }
-      event("click", div_2, onCloseClick, true);
+      delegated("click", div_2, onCloseClick);
       append($$anchor2, fragment_1);
     };
     if_block(node_1, ($$render) => {
@@ -6914,9 +6885,6 @@ function Widget($$anchor, $$props) {
         get dir() {
           return get(dir);
         },
-        get updateUISignal() {
-          return get(updateUISignal);
-        },
         children: ($$anchor3, $$slotProps) => {
           var fragment_9 = comment();
           var node_10 = first_child(fragment_9);
@@ -6981,9 +6949,6 @@ function Widget($$anchor, $$props) {
             },
             get dir() {
               return get(dir);
-            },
-            get updateUISignal() {
-              return get(updateUISignal);
             },
             children: ($$anchor4, $$slotProps) => {
               var fragment_12 = root_19();
@@ -7056,7 +7021,8 @@ function Widget($$anchor, $$props) {
   $$cleanup();
   return $$pop;
 }
-if (typeof window !== "undefined" && window.customElements && !customElements.get("altcha-widget")) customElements.define("altcha-widget", create_custom_element(
+delegate(["click"]);
+if (typeof window !== "undefined" && window.customElements) customElements.define("altcha-widget", create_custom_element(
   Widget,
   {
     auto: { type: "String" },
