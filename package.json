@@ -1,5 +1,5 @@
 {
-	"name": "altcha",
+	"name": "@fixeditforyou/altcha",
 	"description": "Privacy-first CAPTCHA widget, compliant with global regulations (GDPR/HIPAA/CCPA/LGDP/DPDPA/PIPL) and WCAG accessible. No tracking, self-verifying.",
 	"version": "3.3.0",
 	"license": "MIT",
