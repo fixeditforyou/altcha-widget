@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.3.0] - 2026-10-05
+
+- Fix: SHA key derivation hashes the full digest each round and truncates once, matching altcha-lib and the server ports (SHA-384/512 and any `keyLength` below the digest size with `cost > 1` previously failed server verification)
+- Fix: PBKDF2 supports any `keyLength` (uses `deriveBits` instead of an AES-GCM key)
+- Fix: built-in `deriveKey` functions reject unsupported algorithm names
+- Fix: `verifySolution` requires the re-derived key to match the signed `keyPrefix`, rejects malformed `derivedKey`/`counter` values, and validates secrets and `hmacAlgorithm`
+- Fix: `createChallenge` validates its options (`keyPrefixLength` below the derived key length, non-empty hex `keyPrefix` lowercased before signing, positive integer `cost`/`keyLength`, valid `counter` and `expiresAt`)
+- Fix: `solveChallenge` fails fast on an invalid `keyPrefix`
+- Fix: `hexToBuffer` rejects non-hex input; canonical JSON keeps `__proto__` keys
+- Fix: `verifyServerSignature` validates `algorithm` and `hmacSecret`, handles a missing signature, and uses exact expiry
+- Fix: obfuscation plugin encrypts with the full derived key instead of a `keyPrefixLength`-sized prefix
+
 ## [3.2.4] - 2026-09-30
 
 - Fix: unhandled AbortError when audio challenge `play()` is interrupted by `pause()` [#199]
