@@ -1,5 +1,31 @@
 import type { HmacAlgorithm } from './types';
 
+/** Throws unless `algorithm` is exactly one of `allowed`. */
+export function assertAlgorithm<T extends string>(
+	algorithm: unknown,
+	allowed: readonly T[]
+): asserts algorithm is T {
+	if (!allowed.includes(algorithm as T)) {
+		throw new Error(
+			`Unsupported algorithm: ${String(algorithm)}. Expected one of: ${allowed.join(', ')}.`
+		);
+	}
+}
+
+/** Throws unless `value` is an integer of at least 1. */
+export function assertPositiveInteger(name: string, value: unknown): asserts value is number {
+	if (!Number.isInteger(value) || (value as number) < 1) {
+		throw new Error(`${name} must be a positive integer. Got: ${String(value)}`);
+	}
+}
+
+/** Throws unless `secret` is a non-empty string. */
+export function assertSecret(name: string, secret: unknown): asserts secret is string {
+	if (typeof secret !== 'string' || secret === '') {
+		throw new Error(`${name} must be a non-empty string.`);
+	}
+}
+
 /** Checks if a buffer starts with the given prefix bytes. */
 export function bufferStartsWith(buffer: Uint8Array, prefix: Uint8Array) {
 	if (prefix.length > buffer.length) {
@@ -33,19 +59,19 @@ export function concatBuffers(a: Uint8Array, b: Uint8Array) {
 	return out;
 }
 
-/** Converts a hex string to a Uint8Array. Throws if the string has odd length. */
+/** Converts a hex string to a Uint8Array. Throws on odd length or non-hex characters. */
 export function hexToBuffer(hex: string): Uint8Array {
 	if (hex.length % 2 !== 0) {
 		throw new Error(`Hex string must have an even length. Got: ${hex}`);
 	}
-	const buffer = new ArrayBuffer(hex.length / 2);
-	const view = new DataView(buffer);
-	for (let i = 0; i < hex.length; i += 2) {
-		const byteString = hex.substring(i, i + 2);
-		const byteValue = parseInt(byteString, 16);
-		view.setUint8(i / 2, byteValue);
+	if (!/^[0-9a-fA-F]*$/.test(hex)) {
+		throw new Error('Hex string contains non-hex characters.');
 	}
-	return new Uint8Array(buffer);
+	const buffer = new Uint8Array(hex.length / 2);
+	for (let i = 0; i < buffer.length; i++) {
+		buffer[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+	}
+	return buffer;
 }
 
 /** Checks if two strings are equal in constant time. */
@@ -99,6 +125,38 @@ export async function hmac(
 	return new Uint8Array(signature);
 }
 
+/** Generates a random integer between the specified minimum and maximum values (inclusive). */
+export function randomInt(max: number, min: number = 1): number {
+	const ab = new Uint32Array(1);
+	crypto.getRandomValues(ab);
+	const randomNumber = ab[0] / (0xffffffff + 1);
+	return Math.floor(randomNumber * (max - min + 1) + min);
+}
+
+/**
+ * Recursively sorts object keys alphabetically for deterministic serialization.
+ * Uses `Object.fromEntries` so that a `__proto__` key stays an own property (and is
+ * serialized and signed) instead of invoking the prototype setter.
+ */
+export function sortKeys<T = unknown>(obj: T): T {
+	if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+		return obj;
+	}
+	return Object.fromEntries(
+		Object.keys(obj)
+			.sort()
+			.flatMap((key) => {
+				const value = (obj as Record<string, unknown>)[key];
+				return value === undefined ? [] : [[key, sortKeys(value)]];
+			})
+	) as T;
+}
+
+/** Returns elapsed time in milliseconds since `start`, rounded to one decimal. */
+export function timeDuration(start: number) {
+	return Math.floor((performance.now() - start) * 10) / 10;
+}
+
 /** Inject CSS tag into the document */
 export function injectCss(css: string, id: string = 'altcha-css', nonce?: string) {
 	if (typeof document !== 'undefined' && document && !document.getElementById(id)) {
@@ -114,33 +172,4 @@ export function injectCss(css: string, id: string = 'altcha-css', nonce?: string
 		}
 		document.head.appendChild(style);
 	}
-}
-
-/** Generates a random integer between the specified minimum and maximum values (inclusive). */
-export function randomInt(max: number, min: number = 1): number {
-	const ab = new Uint32Array(1);
-	crypto.getRandomValues(ab);
-	const randomNumber = ab[0] / (0xffffffff + 1);
-	return Math.floor(randomNumber * (max - min + 1) + min);
-}
-
-/** Recursively sorts object keys alphabetically for deterministic serialization. */
-export function sortKeys<T = unknown>(obj: T): T {
-	if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
-		return obj;
-	}
-	return Object.keys(obj)
-		.sort()
-		.reduce<Record<string, unknown>>((acc, key) => {
-			const value = (obj as Record<string, unknown>)[key];
-			if (value !== undefined) {
-				acc[key] = sortKeys(value);
-			}
-			return acc;
-		}, {}) as T;
-}
-
-/** Returns elapsed time in milliseconds since `start`, rounded to one decimal. */
-export function timeDuration(start: number) {
-	return Math.floor((performance.now() - start) * 10) / 10;
 }

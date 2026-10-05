@@ -1,4 +1,7 @@
 import {
+	assertAlgorithm,
+	assertPositiveInteger,
+	assertSecret,
 	bufferStartsWith,
 	bufferToHex,
 	canonicalJSON,
@@ -14,13 +17,27 @@ import {
 	type CreateChallengeOptions,
 	type Challenge,
 	type ChallengeParameters,
-	type DeriveKeyFunctionResult,
 	type SolveChallengeOptions,
 	type Solution,
 	type VerifySolutionOptions,
 	type VerifySolutionResult,
 	HmacAlgorithm
 } from './types';
+
+const HMAC_ALGORITHMS = Object.values(HmacAlgorithm);
+
+/**
+ * Largest counter each mode encodes exactly: `setUint32` wraps above 2^32 - 1, and
+ * integers above `Number.MAX_SAFE_INTEGER` are not exactly representable.
+ */
+const MAX_COUNTER = {
+	string: Number.MAX_SAFE_INTEGER,
+	uint32: 0xffffffff
+} as const;
+
+function isValidCounter(n: unknown, mode: 'uint32' | 'string'): n is number {
+	return Number.isInteger(n) && (n as number) >= 0 && (n as number) <= MAX_COUNTER[mode];
+}
 
 /**
  * Manages a buffer that combines a nonce with a counter value.
@@ -48,8 +65,14 @@ export class PasswordBuffer {
 	 * Appends the counter to the nonce buffer.
 	 * In 'string' mode, encodes the counter as a UTF-8 string.
 	 * In 'uint32' mode, writes the counter as a big-endian 32-bit integer.
+	 * Throws a RangeError unless the counter is an integer the mode encodes exactly.
 	 */
 	setCounter(n: number) {
+		if (!isValidCounter(n, this.mode)) {
+			throw new RangeError(
+				`counter must be an integer from 0 to ${MAX_COUNTER[this.mode]}. Got: ${n}`
+			);
+		}
 		if (this.mode === 'string') {
 			return concatBuffers(this.nonce, this.encoder.encode(n.toString()));
 		}
@@ -59,12 +82,16 @@ export class PasswordBuffer {
 }
 
 /**
- * Creates a new proof-of-work challenge.
+ * Builds unsigned challenge parameters with a random nonce and salt.
  *
- * Generates random nonce and salt, optionally pre-computes a key prefix
- * from a known counter value, and optionally signs the challenge with HMAC.
+ * In deterministic mode (`counter` set), derives the key for that counter,
+ * sets `keyPrefix` from it and returns the derived key. Internal: shared by
+ * `createChallenge` and `obfuscate`, not exported from the package entry point.
  */
-export async function createChallenge(options: CreateChallengeOptions): Promise<Challenge> {
+export async function deriveChallenge(options: CreateChallengeOptions): Promise<{
+	parameters: ChallengeParameters;
+	derivedKey: Uint8Array | null;
+}> {
 	const {
 		algorithm,
 		counter,
@@ -73,15 +100,33 @@ export async function createChallenge(options: CreateChallengeOptions): Promise<
 		deriveKey,
 		data,
 		expiresAt,
-		hmacAlgorithm = HmacAlgorithm.SHA_256,
-		hmacKeySignatureSecret,
-		hmacSignatureSecret,
 		keyLength = 32,
 		keyPrefix = '00',
-		keyPrefixLength = keyLength / 2,
+		keyPrefixLength = Math.floor(keyLength / 2),
 		memoryCost,
 		parallelism
 	} = options;
+	// Validate up front: invalid values would otherwise produce NaN parameters,
+	// crash inside a KDF, or silently disable expiry.
+	assertPositiveInteger('cost', cost);
+	assertPositiveInteger('keyLength', keyLength);
+	if (memoryCost !== undefined) {
+		assertPositiveInteger('memoryCost', memoryCost);
+	}
+	if (parallelism !== undefined) {
+		assertPositiveInteger('parallelism', parallelism);
+	}
+	if (counterMode !== 'uint32' && counterMode !== 'string') {
+		throw new Error(`counterMode must be 'uint32' or 'string'. Got: ${String(counterMode)}`);
+	}
+	const expiresAtSeconds =
+		expiresAt instanceof Date ? Math.floor(expiresAt.getTime() / 1_000) : expiresAt;
+	if (
+		expiresAtSeconds !== undefined &&
+		!(Number.isFinite(expiresAtSeconds) && expiresAtSeconds > 0)
+	) {
+		throw new Error('expiresAt must be a valid Date or a positive number of seconds.');
+	}
 	const parameters: ChallengeParameters = {
 		algorithm,
 		nonce: bufferToHex(crypto.getRandomValues(new Uint8Array(16))),
@@ -91,27 +136,73 @@ export async function createChallenge(options: CreateChallengeOptions): Promise<
 		memoryCost,
 		parallelism,
 		keyPrefix,
-		expiresAt: expiresAt instanceof Date ? Math.floor(expiresAt.getTime() / 1_000) : expiresAt,
+		expiresAt: expiresAtSeconds,
 		data
 	};
-
-	// If a counter is provided, derive the key and extract the prefix the solver must match.
-	let deriveKeyResult: DeriveKeyFunctionResult | null = null;
-	if (counter !== undefined) {
-		const nonceBuf = hexToBuffer(parameters.nonce);
-		deriveKeyResult = await deriveKey(
-			parameters,
-			hexToBuffer(parameters.salt),
-			new PasswordBuffer(nonceBuf, counterMode).setCounter(counter)
-		);
-		if (deriveKeyResult.parameters) {
-			Object.assign(parameters, deriveKeyResult.parameters);
-		}
-		parameters.keyPrefix = bufferToHex(deriveKeyResult.derivedKey.slice(0, keyPrefixLength));
+	if (counter === undefined) {
+		// An empty prefix matches every key, so counter 0 would solve the challenge.
+		assertKeyPrefix(keyPrefix, keyLength);
+		// Normalize before signing: derived keys are lowercase hex, and several ports
+		// compare prefixes as strings.
+		parameters.keyPrefix = keyPrefix.toLowerCase();
+		return { parameters, derivedKey: null };
 	}
 
+	// Deterministic mode: derive the key and extract the prefix the solver must match.
+	if (!Number.isInteger(keyPrefixLength) || keyPrefixLength < 1) {
+		throw new Error(
+			`keyPrefixLength must be a positive integer. Got: ${keyPrefixLength} (keyLength: ${keyLength}).`
+		);
+	}
+	const deriveKeyResult = await deriveKey(
+		parameters,
+		hexToBuffer(parameters.salt),
+		new PasswordBuffer(hexToBuffer(parameters.nonce), counterMode).setCounter(counter)
+	);
+	if (deriveKeyResult.parameters) {
+		Object.assign(parameters, deriveKeyResult.parameters);
+	}
+	const { derivedKey } = deriveKeyResult;
+	// A prefix covering the whole key would let the key signature be satisfied without any work.
+	if (keyPrefixLength >= derivedKey.length) {
+		throw new Error(
+			`keyPrefixLength (${keyPrefixLength}) must be less than the derived key length (${derivedKey.length} bytes).`
+		);
+	}
+	parameters.keyPrefix = bufferToHex(
+		derivedKey.slice(0, Math.min(keyPrefixLength, Math.floor(derivedKey.length / 2)))
+	);
+	return { parameters, derivedKey };
+}
+
+/**
+ * Creates a new proof-of-work challenge.
+ *
+ * Generates random nonce and salt, optionally pre-computes a key prefix
+ * from a known counter value, and optionally signs the challenge with HMAC.
+ * Omitting `hmacSignatureSecret` creates an unsigned challenge; an empty or `null`
+ * secret throws, as does `hmacKeySignatureSecret` without `hmacSignatureSecret`.
+ */
+export async function createChallenge(options: CreateChallengeOptions): Promise<Challenge> {
+	const {
+		hmacAlgorithm = HmacAlgorithm.SHA_256,
+		hmacKeySignatureSecret,
+		hmacSignatureSecret
+	} = options;
+	assertAlgorithm(hmacAlgorithm, HMAC_ALGORITHMS);
+	if (hmacSignatureSecret !== undefined) {
+		assertSecret('hmacSignatureSecret', hmacSignatureSecret);
+	}
+	if (hmacKeySignatureSecret !== undefined) {
+		assertSecret('hmacKeySignatureSecret', hmacKeySignatureSecret);
+		if (hmacSignatureSecret === undefined) {
+			throw new Error('hmacKeySignatureSecret requires hmacSignatureSecret.');
+		}
+	}
+	const { parameters, derivedKey } = await deriveChallenge(options);
+
 	// Return unsigned challenge if no HMAC secret is provided.
-	if (!hmacSignatureSecret) {
+	if (hmacSignatureSecret === undefined) {
 		return {
 			parameters: sortKeys(parameters)
 		};
@@ -119,10 +210,25 @@ export async function createChallenge(options: CreateChallengeOptions): Promise<
 	return signChallenge(
 		hmacAlgorithm,
 		parameters,
-		deriveKeyResult?.derivedKey,
+		derivedKey,
 		hmacSignatureSecret,
 		hmacKeySignatureSecret
 	);
+}
+
+/**
+ * Throws unless `keyPrefix` is a non-empty hex string no longer than the key.
+ * A non-hex or overlong prefix can never be matched by any derived key.
+ */
+function assertKeyPrefix(keyPrefix: unknown, keyLength: number): asserts keyPrefix is string {
+	if (typeof keyPrefix !== 'string' || !/^[0-9a-fA-F]+$/.test(keyPrefix)) {
+		throw new Error('keyPrefix must be a non-empty hex string.');
+	}
+	if (keyPrefix.length > keyLength * 2) {
+		throw new Error(
+			`keyPrefix (${keyPrefix.length} hex characters) must not be longer than the key (keyLength: ${keyLength} bytes).`
+		);
+	}
 }
 
 /**
@@ -139,9 +245,14 @@ export async function solveChallenge(options: SolveChallengeOptions): Promise<So
 		deriveKey,
 		timeout = 90_000
 	} = options;
-	const { nonce, keyPrefix, salt } = challenge.parameters;
+	const { nonce, keyLength = 32, keyPrefix, salt } = challenge.parameters;
+	// Fail fast: an invalid prefix would otherwise run until the timeout.
+	assertKeyPrefix(keyPrefix, keyLength);
 	const nonceBuf = hexToBuffer(nonce);
 	const saltBuf = hexToBuffer(salt);
+	// Odd-length prefixes are compared as hex strings, so match case-insensitively
+	// like the byte comparison used for even-length prefixes.
+	const keyPrefixHex = keyPrefix.toLowerCase();
 	const keyPrefixBuf = keyPrefix.length % 2 === 0 ? hexToBuffer(keyPrefix) : null;
 	const password = new PasswordBuffer(nonceBuf, counterMode);
 	const start = performance.now();
@@ -171,7 +282,7 @@ export async function solveChallenge(options: SolveChallengeOptions): Promise<So
 		if (
 			keyPrefixBuf
 				? bufferStartsWith(derivedKey, keyPrefixBuf)
-				: bufferToHex(derivedKey).startsWith(keyPrefix)
+				: bufferToHex(derivedKey).startsWith(keyPrefixHex)
 		) {
 			derivedKeyHex = bufferToHex(derivedKey);
 			break;
@@ -191,6 +302,7 @@ export async function solveChallenge(options: SolveChallengeOptions): Promise<So
  * Each worker tests a different subset of counter values (interleaved by concurrency).
  * Automatically retries with fewer workers on out-of-memory errors.
  */
+
 export async function solveChallengeWorkers(
 	options: Omit<SolveChallengeOptions, 'deriveKey'> & {
 		concurrency: number;
@@ -205,7 +317,7 @@ export async function solveChallengeWorkers(
 		createWorker,
 		onOutOfMemory = (c) => (c > 1 ? Math.floor(c / 2) : 0),
 		counterMode,
-		timeout = 90_000
+		timeout
 	} = options;
 	const workersConcurrency = Math.min(16, Math.max(1, concurrency));
 	const workersInstances: Worker[] = [];
@@ -327,6 +439,11 @@ export async function verifySolution(
 		hmacSignatureSecret,
 		solution
 	} = options;
+	assertAlgorithm(hmacAlgorithm, HMAC_ALGORITHMS);
+	assertSecret('hmacSignatureSecret', hmacSignatureSecret);
+	if (hmacKeySignatureSecret !== undefined) {
+		assertSecret('hmacKeySignatureSecret', hmacKeySignatureSecret);
+	}
 	const start = performance.now();
 
 	// 1. Check expiration.
@@ -366,6 +483,23 @@ export async function verifySolution(
 		};
 	}
 
+	// A malformed solution is an invalid solution, not an error. Requiring lowercase
+	// hex (as produced by every solver) also makes paths 4a and 4b agree on case, and
+	// requiring an exact counter rejects coerced or wrapped values in both paths.
+	if (
+		typeof solution?.derivedKey !== 'string' ||
+		!/^(?:[0-9a-f]{2})+$/.test(solution.derivedKey) ||
+		!isValidCounter(solution.counter, counterMode ?? 'uint32')
+	) {
+		return {
+			expired: false,
+			invalidSignature: false,
+			invalidSolution: true,
+			time: timeDuration(start),
+			verified: false
+		};
+	}
+
 	// 4a. If a key signature exists, verify the derived key against it (faster path).
 	if (challenge.parameters.keySignature && hmacKeySignatureSecret) {
 		const derivedKeySignatureCheck = bufferToHex(
@@ -384,7 +518,8 @@ export async function verifySolution(
 		};
 	}
 
-	// 4b. Otherwise, re-derive the key from the solution's counter and compare.
+	// 4b. Otherwise, re-derive the key from the solution's counter, compare it
+	// against the submitted key, and require it to satisfy the signed key prefix.
 	const nonceBuf = hexToBuffer(challenge.parameters.nonce);
 	const saltBuf = hexToBuffer(challenge.parameters.salt);
 	const { derivedKey } = await deriveKey(
@@ -393,7 +528,13 @@ export async function verifySolution(
 		new PasswordBuffer(nonceBuf, counterMode).setCounter(solution.counter)
 	);
 	const derivedKeyHex = bufferToHex(derivedKey);
-	const invalidSolution = !constantTimeEqual(derivedKeyHex, solution.derivedKey);
+	const keyMatches = constantTimeEqual(derivedKeyHex, solution.derivedKey);
+	const keyPrefix = challenge.parameters.keyPrefix;
+	const keyPrefixBuf = keyPrefix.length % 2 === 0 ? hexToBuffer(keyPrefix) : null;
+	const prefixMatches = keyPrefixBuf
+		? bufferStartsWith(derivedKey, keyPrefixBuf)
+		: derivedKeyHex.startsWith(keyPrefix.toLowerCase());
+	const invalidSolution = !(keyMatches && prefixMatches);
 	return {
 		expired: false,
 		invalidSignature: false,

@@ -5559,6 +5559,12 @@ var AudioState = /* @__PURE__ */ ((AudioState2) => {
   AudioState2["READY"] = "ready";
   return AudioState2;
 })(AudioState || {});
+var HmacAlgorithm = /* @__PURE__ */ ((HmacAlgorithm2) => {
+  HmacAlgorithm2["SHA_256"] = "SHA-256";
+  HmacAlgorithm2["SHA_384"] = "SHA-384";
+  HmacAlgorithm2["SHA_512"] = "SHA-512";
+  return HmacAlgorithm2;
+})(HmacAlgorithm || {});
 var State = /* @__PURE__ */ ((State2) => {
   State2["CODE"] = "code";
   State2["ERROR"] = "error";
@@ -6077,6 +6083,7 @@ create_custom_element(
 function bufferToHex(buffer) {
   return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+Object.values(HmacAlgorithm);
 async function solveChallengeWorkers(options) {
   const {
     challenge,
@@ -6085,7 +6092,7 @@ async function solveChallengeWorkers(options) {
     createWorker,
     onOutOfMemory = (c) => c > 1 ? Math.floor(c / 2) : 0,
     counterMode,
-    timeout = 9e4
+    timeout
   } = options;
   const workersConcurrency = Math.min(16, Math.max(1, concurrency));
   const workersInstances = [];

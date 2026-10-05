@@ -851,96 +851,23 @@
   }
   new Mutex();
   new Mutex();
-  async function deriveKey$3(parameters, salt, password) {
-    const {
-      cost,
-      keyLength = 32,
-      memoryCost = 16384,
-      // in KB
-      parallelism = 1
-    } = parameters;
-    return {
-      parameters: {
-        memoryCost,
-        parallelism
-      },
-      derivedKey: await argon2id$1({
-        password,
-        salt,
-        parallelism,
-        iterations: cost,
-        memorySize: memoryCost,
-        hashLength: keyLength,
-        outputType: "binary"
-      })
-    };
-  }
-  const argon2id = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-    __proto__: null,
-    deriveKey: deriveKey$3
-  }, Symbol.toStringTag, { value: "Module" }));
-  function getDigest(algorithm) {
-    switch (algorithm) {
-      case "PBKDF2/SHA-512":
-        return "SHA-512";
-      case "PBKDF2/SHA-384":
-        return "SHA-384";
-      case "PBKDF2/SHA-256":
-      default:
-        return "SHA-256";
+  function assertAlgorithm(algorithm, allowed) {
+    if (!allowed.includes(algorithm)) {
+      throw new Error(
+        `Unsupported algorithm: ${String(algorithm)}. Expected one of: ${allowed.join(", ")}.`
+      );
     }
   }
-  async function deriveKey$2(parameters, salt, password) {
-    const { algorithm, cost, keyLength = 32 } = parameters;
-    const passwordKey = await crypto.subtle.importKey(
-      "raw",
-      password,
-      { name: "PBKDF2" },
-      false,
-      ["deriveKey"]
-    );
-    const derivedKey = await crypto.subtle.deriveKey(
-      {
-        name: "PBKDF2",
-        salt,
-        iterations: cost,
-        hash: getDigest(algorithm)
-      },
-      passwordKey,
-      { name: "AES-GCM", length: keyLength * 8 },
-      true,
-      ["encrypt"]
-    );
-    return {
-      derivedKey: new Uint8Array(await crypto.subtle.exportKey("raw", derivedKey))
-    };
+  function assertPositiveInteger(name, value) {
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`${name} must be a positive integer. Got: ${String(value)}`);
+    }
   }
-  const pbkdf2 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-    __proto__: null,
-    deriveKey: deriveKey$2
-  }, Symbol.toStringTag, { value: "Module" }));
-  async function deriveKey$1(parameters, salt, password) {
-    const { cost, keyLength = 32, memoryCost = 8, parallelism = 1 } = parameters;
-    return {
-      parameters: {
-        memoryCost,
-        parallelism
-      },
-      derivedKey: await scrypt$1({
-        password,
-        salt,
-        blockSize: memoryCost,
-        costFactor: cost,
-        hashLength: keyLength,
-        parallelism,
-        outputType: "binary"
-      })
-    };
+  function assertSecret(name, secret) {
+    if (typeof secret !== "string" || secret === "") {
+      throw new Error(`${name} must be a non-empty string.`);
+    }
   }
-  const scrypt = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-    __proto__: null,
-    deriveKey: deriveKey$1
-  }, Symbol.toStringTag, { value: "Module" }));
   function bufferStartsWith(buffer, prefix) {
     if (prefix.length > buffer.length) {
       return false;
@@ -968,14 +895,14 @@
     if (hex.length % 2 !== 0) {
       throw new Error(`Hex string must have an even length. Got: ${hex}`);
     }
-    const buffer = new ArrayBuffer(hex.length / 2);
-    const view = new DataView(buffer);
-    for (let i = 0; i < hex.length; i += 2) {
-      const byteString = hex.substring(i, i + 2);
-      const byteValue = parseInt(byteString, 16);
-      view.setUint8(i / 2, byteValue);
+    if (!/^[0-9a-fA-F]*$/.test(hex)) {
+      throw new Error("Hex string contains non-hex characters.");
     }
-    return new Uint8Array(buffer);
+    const buffer = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < buffer.length; i++) {
+      buffer[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+    }
+    return buffer;
   }
   function constantTimeEqual(a, b) {
     if (a.length !== b.length) {
@@ -1020,35 +947,108 @@
     if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
       return obj;
     }
-    return Object.keys(obj).sort().reduce((acc, key) => {
-      const value = obj[key];
-      if (value !== void 0) {
-        acc[key] = sortKeys(value);
-      }
-      return acc;
-    }, {});
+    return Object.fromEntries(
+      Object.keys(obj).sort().flatMap((key) => {
+        const value = obj[key];
+        return value === void 0 ? [] : [[key, sortKeys(value)]];
+      })
+    );
   }
   function timeDuration(start) {
     return Math.floor((performance.now() - start) * 10) / 10;
   }
+  async function deriveKey$3(parameters, salt, password) {
+    const {
+      cost,
+      keyLength = 32,
+      memoryCost = 16384,
+      // in KB
+      parallelism = 1
+    } = parameters;
+    assertAlgorithm(parameters.algorithm, ["ARGON2ID"]);
+    return {
+      parameters: {
+        memoryCost,
+        parallelism
+      },
+      derivedKey: await argon2id$1({
+        password,
+        salt,
+        parallelism,
+        iterations: cost,
+        memorySize: memoryCost,
+        hashLength: keyLength,
+        outputType: "binary"
+      })
+    };
+  }
+  const argon2id = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    deriveKey: deriveKey$3
+  }, Symbol.toStringTag, { value: "Module" }));
+  async function deriveKey$2(parameters, salt, password) {
+    const { algorithm, cost, keyLength = 32 } = parameters;
+    assertAlgorithm(algorithm, ["PBKDF2/SHA-256", "PBKDF2/SHA-384", "PBKDF2/SHA-512"]);
+    const passwordKey = await crypto.subtle.importKey(
+      "raw",
+      password,
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"]
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt,
+        iterations: cost,
+        hash: algorithm.slice("PBKDF2/".length)
+      },
+      passwordKey,
+      keyLength * 8
+    );
+    return {
+      parameters: {},
+      derivedKey: new Uint8Array(derivedBits)
+    };
+  }
+  const pbkdf2 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    deriveKey: deriveKey$2
+  }, Symbol.toStringTag, { value: "Module" }));
+  async function deriveKey$1(parameters, salt, password) {
+    const { cost, keyLength = 32, memoryCost = 8, parallelism = 1 } = parameters;
+    assertAlgorithm(parameters.algorithm, ["SCRYPT"]);
+    return {
+      parameters: {
+        memoryCost,
+        parallelism
+      },
+      derivedKey: await scrypt$1({
+        password,
+        salt,
+        blockSize: memoryCost,
+        costFactor: cost,
+        hashLength: keyLength,
+        parallelism,
+        outputType: "binary"
+      })
+    };
+  }
+  const scrypt = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    deriveKey: deriveKey$1
+  }, Symbol.toStringTag, { value: "Module" }));
   async function deriveKey(parameters, salt, password) {
     const { algorithm, keyLength = 32 } = parameters;
+    assertAlgorithm(algorithm, ["SHA-256", "SHA-384", "SHA-512"]);
     const iterations = Math.max(1, parameters.cost);
-    let data = void 0;
-    let derivedKey = void 0;
+    let derivedKey = concatBuffers(salt, password);
     for (let i = 0; i < iterations; i++) {
-      if (i === 0) {
-        data = concatBuffers(salt, password);
-      } else {
-        data = derivedKey;
-      }
-      derivedKey = new Uint8Array(
-        (await crypto.subtle.digest(algorithm, data)).slice(0, keyLength)
-      );
+      derivedKey = new Uint8Array(await crypto.subtle.digest(algorithm, derivedKey));
     }
     return {
       parameters: {},
-      derivedKey
+      derivedKey: derivedKey.slice(0, keyLength)
     };
   }
   const sha = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
@@ -1061,6 +1061,14 @@
     HmacAlgorithm2["SHA_512"] = "SHA-512";
     return HmacAlgorithm2;
   })(HmacAlgorithm || {});
+  const HMAC_ALGORITHMS = Object.values(HmacAlgorithm);
+  const MAX_COUNTER = {
+    string: Number.MAX_SAFE_INTEGER,
+    uint32: 4294967295
+  };
+  function isValidCounter(n, mode) {
+    return Number.isInteger(n) && n >= 0 && n <= MAX_COUNTER[mode];
+  }
   class PasswordBuffer {
     constructor(nonce, mode = "uint32") {
       this.nonce = nonce;
@@ -1079,8 +1087,14 @@
      * Appends the counter to the nonce buffer.
      * In 'string' mode, encodes the counter as a UTF-8 string.
      * In 'uint32' mode, writes the counter as a big-endian 32-bit integer.
+     * Throws a RangeError unless the counter is an integer the mode encodes exactly.
      */
     setCounter(n) {
+      if (!isValidCounter(n, this.mode)) {
+        throw new RangeError(
+          `counter must be an integer from 0 to ${MAX_COUNTER[this.mode]}. Got: ${n}`
+        );
+      }
       if (this.mode === "string") {
         return concatBuffers(this.nonce, this.encoder.encode(n.toString()));
       }
@@ -1088,7 +1102,7 @@
       return this.buffer;
     }
   }
-  async function createChallenge(options) {
+  async function deriveChallenge(options) {
     const {
       algorithm,
       counter,
@@ -1097,15 +1111,27 @@
       deriveKey: deriveKey2,
       data,
       expiresAt,
-      hmacAlgorithm = HmacAlgorithm.SHA_256,
-      hmacKeySignatureSecret,
-      hmacSignatureSecret,
       keyLength = 32,
       keyPrefix = "00",
-      keyPrefixLength = keyLength / 2,
+      keyPrefixLength = Math.floor(keyLength / 2),
       memoryCost,
       parallelism
     } = options;
+    assertPositiveInteger("cost", cost);
+    assertPositiveInteger("keyLength", keyLength);
+    if (memoryCost !== void 0) {
+      assertPositiveInteger("memoryCost", memoryCost);
+    }
+    if (parallelism !== void 0) {
+      assertPositiveInteger("parallelism", parallelism);
+    }
+    if (counterMode !== "uint32" && counterMode !== "string") {
+      throw new Error(`counterMode must be 'uint32' or 'string'. Got: ${String(counterMode)}`);
+    }
+    const expiresAtSeconds = expiresAt instanceof Date ? Math.floor(expiresAt.getTime() / 1e3) : expiresAt;
+    if (expiresAtSeconds !== void 0 && !(Number.isFinite(expiresAtSeconds) && expiresAtSeconds > 0)) {
+      throw new Error("expiresAt must be a valid Date or a positive number of seconds.");
+    }
     const parameters = {
       algorithm,
       nonce: bufferToHex(crypto.getRandomValues(new Uint8Array(16))),
@@ -1115,23 +1141,56 @@
       memoryCost,
       parallelism,
       keyPrefix,
-      expiresAt: expiresAt instanceof Date ? Math.floor(expiresAt.getTime() / 1e3) : expiresAt,
+      expiresAt: expiresAtSeconds,
       data
     };
-    let deriveKeyResult = null;
-    if (counter !== void 0) {
-      const nonceBuf = hexToBuffer(parameters.nonce);
-      deriveKeyResult = await deriveKey2(
-        parameters,
-        hexToBuffer(parameters.salt),
-        new PasswordBuffer(nonceBuf, counterMode).setCounter(counter)
-      );
-      if (deriveKeyResult.parameters) {
-        Object.assign(parameters, deriveKeyResult.parameters);
-      }
-      parameters.keyPrefix = bufferToHex(deriveKeyResult.derivedKey.slice(0, keyPrefixLength));
+    if (counter === void 0) {
+      assertKeyPrefix(keyPrefix, keyLength);
+      parameters.keyPrefix = keyPrefix.toLowerCase();
+      return { parameters, derivedKey: null };
     }
-    if (!hmacSignatureSecret) {
+    if (!Number.isInteger(keyPrefixLength) || keyPrefixLength < 1) {
+      throw new Error(
+        `keyPrefixLength must be a positive integer. Got: ${keyPrefixLength} (keyLength: ${keyLength}).`
+      );
+    }
+    const deriveKeyResult = await deriveKey2(
+      parameters,
+      hexToBuffer(parameters.salt),
+      new PasswordBuffer(hexToBuffer(parameters.nonce), counterMode).setCounter(counter)
+    );
+    if (deriveKeyResult.parameters) {
+      Object.assign(parameters, deriveKeyResult.parameters);
+    }
+    const { derivedKey } = deriveKeyResult;
+    if (keyPrefixLength >= derivedKey.length) {
+      throw new Error(
+        `keyPrefixLength (${keyPrefixLength}) must be less than the derived key length (${derivedKey.length} bytes).`
+      );
+    }
+    parameters.keyPrefix = bufferToHex(
+      derivedKey.slice(0, Math.min(keyPrefixLength, Math.floor(derivedKey.length / 2)))
+    );
+    return { parameters, derivedKey };
+  }
+  async function createChallenge(options) {
+    const {
+      hmacAlgorithm = HmacAlgorithm.SHA_256,
+      hmacKeySignatureSecret,
+      hmacSignatureSecret
+    } = options;
+    assertAlgorithm(hmacAlgorithm, HMAC_ALGORITHMS);
+    if (hmacSignatureSecret !== void 0) {
+      assertSecret("hmacSignatureSecret", hmacSignatureSecret);
+    }
+    if (hmacKeySignatureSecret !== void 0) {
+      assertSecret("hmacKeySignatureSecret", hmacKeySignatureSecret);
+      if (hmacSignatureSecret === void 0) {
+        throw new Error("hmacKeySignatureSecret requires hmacSignatureSecret.");
+      }
+    }
+    const { parameters, derivedKey } = await deriveChallenge(options);
+    if (hmacSignatureSecret === void 0) {
       return {
         parameters: sortKeys(parameters)
       };
@@ -1139,10 +1198,20 @@
     return signChallenge(
       hmacAlgorithm,
       parameters,
-      deriveKeyResult?.derivedKey,
+      derivedKey,
       hmacSignatureSecret,
       hmacKeySignatureSecret
     );
+  }
+  function assertKeyPrefix(keyPrefix, keyLength) {
+    if (typeof keyPrefix !== "string" || !/^[0-9a-fA-F]+$/.test(keyPrefix)) {
+      throw new Error("keyPrefix must be a non-empty hex string.");
+    }
+    if (keyPrefix.length > keyLength * 2) {
+      throw new Error(
+        `keyPrefix (${keyPrefix.length} hex characters) must not be longer than the key (keyLength: ${keyLength} bytes).`
+      );
+    }
   }
   async function solveChallenge(options) {
     const {
@@ -1154,9 +1223,11 @@
       deriveKey: deriveKey2,
       timeout = 9e4
     } = options;
-    const { nonce, keyPrefix, salt } = challenge.parameters;
+    const { nonce, keyLength = 32, keyPrefix, salt } = challenge.parameters;
+    assertKeyPrefix(keyPrefix, keyLength);
     const nonceBuf = hexToBuffer(nonce);
     const saltBuf = hexToBuffer(salt);
+    const keyPrefixHex = keyPrefix.toLowerCase();
     const keyPrefixBuf = keyPrefix.length % 2 === 0 ? hexToBuffer(keyPrefix) : null;
     const password = new PasswordBuffer(nonceBuf, counterMode);
     const start = performance.now();
@@ -1177,7 +1248,7 @@
         await delay(0);
         lastYield = performance.now();
       }
-      if (keyPrefixBuf ? bufferStartsWith(derivedKey, keyPrefixBuf) : bufferToHex(derivedKey).startsWith(keyPrefix)) {
+      if (keyPrefixBuf ? bufferStartsWith(derivedKey, keyPrefixBuf) : bufferToHex(derivedKey).startsWith(keyPrefixHex)) {
         derivedKeyHex = bufferToHex(derivedKey);
         break;
       }
@@ -1198,7 +1269,7 @@
       createWorker,
       onOutOfMemory = (c) => c > 1 ? Math.floor(c / 2) : 0,
       counterMode,
-      timeout = 9e4
+      timeout
     } = options;
     const workersConcurrency = Math.min(16, Math.max(1, concurrency));
     const workersInstances = [];
@@ -1293,6 +1364,11 @@
       hmacSignatureSecret,
       solution
     } = options;
+    assertAlgorithm(hmacAlgorithm, HMAC_ALGORITHMS);
+    assertSecret("hmacSignatureSecret", hmacSignatureSecret);
+    if (hmacKeySignatureSecret !== void 0) {
+      assertSecret("hmacKeySignatureSecret", hmacKeySignatureSecret);
+    }
     const start = performance.now();
     if (challenge.parameters.expiresAt && challenge.parameters.expiresAt < Date.now() / 1e3) {
       return {
@@ -1325,6 +1401,15 @@
         verified: false
       };
     }
+    if (typeof solution?.derivedKey !== "string" || !/^(?:[0-9a-f]{2})+$/.test(solution.derivedKey) || !isValidCounter(solution.counter, counterMode ?? "uint32")) {
+      return {
+        expired: false,
+        invalidSignature: false,
+        invalidSolution: true,
+        time: timeDuration(start),
+        verified: false
+      };
+    }
     if (challenge.parameters.keySignature && hmacKeySignatureSecret) {
       const derivedKeySignatureCheck = bufferToHex(
         await hmac(hmacAlgorithm, hexToBuffer(solution.derivedKey), hmacKeySignatureSecret)
@@ -1349,7 +1434,11 @@
       new PasswordBuffer(nonceBuf, counterMode).setCounter(solution.counter)
     );
     const derivedKeyHex = bufferToHex(derivedKey);
-    const invalidSolution = !constantTimeEqual(derivedKeyHex, solution.derivedKey);
+    const keyMatches = constantTimeEqual(derivedKeyHex, solution.derivedKey);
+    const keyPrefix = challenge.parameters.keyPrefix;
+    const keyPrefixBuf = keyPrefix.length % 2 === 0 ? hexToBuffer(keyPrefix) : null;
+    const prefixMatches = keyPrefixBuf ? bufferStartsWith(derivedKey, keyPrefixBuf) : derivedKeyHex.startsWith(keyPrefix.toLowerCase());
+    const invalidSolution = !(keyMatches && prefixMatches);
     return {
       expired: false,
       invalidSignature: false,
@@ -1358,6 +1447,7 @@
       verified: !invalidSolution && signatureVerified
     };
   }
+  const SERVER_SIGNATURE_ALGORITHMS = ["SHA-1", ...Object.values(HmacAlgorithm)];
   function parseVerificationData(data, convertToArray = ["fields", "reasons"]) {
     const verificationData = {};
     try {
@@ -1370,7 +1460,7 @@
         } else if (value !== null && /^\d+\.\d+?$/.test(value)) {
           verificationData[key] = parseFloat(value);
         } else if (value !== null) {
-          verificationData[key] = convertToArray.includes(key) ? value.trim().split(",") : value.trim();
+          verificationData[key] = convertToArray.includes(key) && value.length ? value.trim().split(",") : value.trim();
         }
       }
     } catch {
@@ -1380,6 +1470,7 @@
   }
   async function verifyFieldsHash(options) {
     const { algorithm = "SHA-256", formData, fields, fieldsHash } = options;
+    assertAlgorithm(algorithm, SERVER_SIGNATURE_ALGORITHMS);
     const data = formData instanceof FormData ? Object.fromEntries(formData) : formData;
     const lines = [];
     for (const field of fields) {
@@ -1389,6 +1480,8 @@
   }
   async function verifyServerSignature(options) {
     const { hmacSecret, payload } = options;
+    assertAlgorithm(payload.algorithm, SERVER_SIGNATURE_ALGORITHMS);
+    assertSecret("hmacSecret", hmacSecret);
     const start = performance.now();
     const signature = bufferToHex(
       await hmac(
@@ -1398,8 +1491,8 @@
       )
     );
     const verificationData = parseVerificationData(payload.verificationData);
-    const expired = !!verificationData && !!verificationData.expire && verificationData.expire < Math.floor(Date.now() / 1e3);
-    const invalidSignature = !constantTimeEqual(payload.signature, signature);
+    const expired = !!verificationData && !!verificationData.expire && verificationData.expire < Date.now() / 1e3;
+    const invalidSignature = typeof payload.signature !== "string" || !constantTimeEqual(payload.signature, signature);
     const invalidSolution = !verificationData || verificationData.verified !== true || payload.verified !== true;
     const verified = !expired && !invalidSignature && !invalidSolution;
     return {

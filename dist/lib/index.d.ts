@@ -419,6 +419,8 @@ declare function deriveKey$3(parameters: ChallengeParameters, salt: Uint8Array, 
  *
  * Generates random nonce and salt, optionally pre-computes a key prefix
  * from a known counter value, and optionally signs the challenge with HMAC.
+ * Omitting `hmacSignatureSecret` creates an unsigned challenge; an empty or `null`
+ * secret throws, as does `hmacKeySignatureSecret` without `hmacSignatureSecret`.
  */
 export declare function createChallenge(options: CreateChallengeOptions): Promise<Challenge>;
 /**

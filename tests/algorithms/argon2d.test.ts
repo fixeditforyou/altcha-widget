@@ -41,4 +41,10 @@ describe('ARGON2ID', () => {
 			'e2e86adb59f793f14f7a9d38a52d531fa7ae6ca77d39b8448e4ebc2e724b094f'
 		);
 	});
+
+	test('should reject a different algorithm name', async () => {
+		await expect(
+			deriveKey({ ...parameters, algorithm: 'SHA-256' }, hexToBuffer(salt), hexToBuffer(nonce))
+		).rejects.toThrow('Unsupported algorithm: SHA-256');
+	});
 });

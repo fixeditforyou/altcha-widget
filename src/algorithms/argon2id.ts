@@ -1,4 +1,5 @@
 import { argon2id } from 'hash-wasm';
+import { assertAlgorithm } from '../helpers';
 import type { ChallengeParameters, DeriveKeyFunctionResult } from '../types';
 
 export async function deriveKey(
@@ -12,6 +13,7 @@ export async function deriveKey(
 		memoryCost = 16384, // in KB
 		parallelism = 1
 	} = parameters;
+	assertAlgorithm(parameters.algorithm, ['ARGON2ID']);
 	return {
 		parameters: {
 			memoryCost,

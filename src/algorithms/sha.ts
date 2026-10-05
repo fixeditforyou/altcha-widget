@@ -1,4 +1,4 @@
-import { concatBuffers } from '../helpers';
+import { assertAlgorithm, concatBuffers } from '../helpers';
 import type { ChallengeParameters, DeriveKeyFunctionResult } from '../types';
 
 export async function deriveKey(
@@ -7,21 +7,16 @@ export async function deriveKey(
 	password: Uint8Array
 ): Promise<DeriveKeyFunctionResult> {
 	const { algorithm, keyLength = 32 } = parameters;
+	assertAlgorithm(algorithm, ['SHA-256', 'SHA-384', 'SHA-512']);
 	const iterations = Math.max(1, parameters.cost);
-	let data: Uint8Array | undefined = undefined;
-	let derivedKey: Uint8Array | undefined = undefined;
+	let derivedKey = concatBuffers(salt, password);
+	// Each round hashes the full previous digest; truncate to keyLength only at the end,
+	// matching the Node implementation and the other language ports.
 	for (let i = 0; i < iterations; i++) {
-		if (i === 0) {
-			data = concatBuffers(salt, password);
-		} else {
-			data = derivedKey;
-		}
-		derivedKey = new Uint8Array(
-			(await crypto.subtle.digest(algorithm, data as BufferSource)).slice(0, keyLength)
-		);
+		derivedKey = new Uint8Array(await crypto.subtle.digest(algorithm, derivedKey as BufferSource));
 	}
 	return {
 		parameters: {},
-		derivedKey: derivedKey!
+		derivedKey: derivedKey.slice(0, keyLength)
 	};
 }

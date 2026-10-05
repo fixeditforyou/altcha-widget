@@ -1,7 +1,8 @@
+import { pbkdf2Sync } from 'node:crypto';
 import { describe, expect, test } from 'vitest';
 import { deriveKey } from '../../src/algorithms/pbkdf2';
-import { PasswordBuffer } from '../../src/pow';
 import { bufferToHex, hexToBuffer } from '../../src/helpers';
+import { PasswordBuffer } from '../../src/pow';
 import { ChallengeParameters } from '../../src/types';
 
 describe('PBKDF2', () => {
@@ -74,4 +75,29 @@ describe('PBKDF2', () => {
 			'd1033a8a8ae79a03ed06bdcfd8ad361aaafc72701c5db9da40fdeecefe3ec41a'
 		);
 	});
+
+	test.each([1, 16, 20, 48, 64])(
+		'should match node:crypto pbkdf2 for any keyLength (%i)',
+		async (keyLength) => {
+			const password = new PasswordBuffer(hexToBuffer(nonce), 'uint32');
+			password.setCounter(123);
+			const result = await deriveKey(
+				{ ...parameters, cost: 10, keyLength },
+				hexToBuffer(salt),
+				password.buffer
+			);
+			expect(bufferToHex(result.derivedKey)).toEqual(
+				pbkdf2Sync(password.buffer, hexToBuffer(salt), 10, keyLength, 'sha256').toString('hex')
+			);
+		}
+	);
+
+	test.each(['PBKDF2/SHA-1', 'pbkdf2/sha-256', 'SHA-256', 'PBKDF2/MD5'])(
+		'should reject an unsupported algorithm (%s)',
+		async (algorithm) => {
+			await expect(
+				deriveKey({ ...parameters, algorithm }, hexToBuffer(salt), hexToBuffer(nonce))
+			).rejects.toThrow(`Unsupported algorithm: ${algorithm}`);
+		}
+	);
 });
