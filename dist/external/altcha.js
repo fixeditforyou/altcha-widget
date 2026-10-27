@@ -5424,7 +5424,7 @@ function Checkbox($$anchor, $$props) {
   var svg = sibling(input, 2);
   next(2);
   reset(div);
-  template_effect(() => set_attribute(div, "data-loading", loading()));
+  template_effect(() => set_attribute(div, "data-altcha-loading", loading()));
   delegated("click", svg, onClick);
   append($$anchor, div);
   return pop($$exports);
@@ -5450,7 +5450,7 @@ function CheckboxNative($$anchor, $$props) {
   attribute_effect(input, () => ({ type: "checkbox", ...rest }), void 0, void 0, void 0, void 0, true);
   next(2);
   reset(div);
-  template_effect(() => set_attribute(div, "data-loading", loading()));
+  template_effect(() => set_attribute(div, "data-altcha-loading", loading()));
   append($$anchor, div);
   return pop($$exports);
 }
@@ -5544,7 +5544,7 @@ function Switch($$anchor, $$props) {
   bind_this(input, ($$value) => inputEl = $$value, () => inputEl);
   var div_1 = sibling(input, 2);
   reset(div);
-  template_effect(() => set_attribute(div, "data-loading", loading()));
+  template_effect(() => set_attribute(div, "data-altcha-loading", loading()));
   delegated("click", div_1, onClick);
   append($$anchor, div);
   return pop($$exports);
@@ -6491,7 +6491,7 @@ function Widget($$anchor, $$props) {
     }
   });
   onMount(() => {
-    log("mounted", "3.5.0");
+    log("mounted", "3.5.0-1");
     if (instance) {
       globalThis.$altcha.instances.add(instance);
     }
